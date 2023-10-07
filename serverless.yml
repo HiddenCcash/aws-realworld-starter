@@ -1,0 +1,100 @@
+service:
+  name: realworld-api-spec
+
+plugins:
+  - serverless-plugin-typescript
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  stage: ${opt:stage, 'dev'}
+  environment:
+    AUTH_TABLE: auth-table-${self:service}-${self:provider.stage}
+    AUTH_TABLE_JWT_SECRET: ${ssm:real-world-auth-jwt-secret-${self:provider.stage}~true}
+    AUTH_TABLE_JWT_EXPIRATION: 1800
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.AUTH_TABLE}"
+
+package:
+  excludeDevDependencies: true
+
+functions:
+  del:
+    handler: src/auth/handler.del
+    environment:
+      AUTH_TABLE_NAME: ${self:provider.environment.AUTH_TABLE}
+      AUTH_TABLE_ADD_TIMESTAMPS: TRUE
+    events:
+      - http:
+          method: delete
+          path: api/users/{email}
+          cors: true
+  getUserByToken:
+    handler: src/auth/handler.getUserByToken
+    environment:
+      AUTH_TABLE_NAME: ${self:provider.environment.AUTH_TABLE}
+      AUTH_TABLE_ADD_TIMESTAMPS: TRUE
+    events:
+      - http:
+          method: get
+          path: /api/user
+          cors: true
+  login:
+    handler: src/auth/handler.login
+    environment:
+      AUTH_TABLE_NAME: ${self:provider.environment.AUTH_TABLE}
+      AUTH_TABLE_ADD_TIMESTAMPS: TRUE
+    events:
+      - http:
+          method: post
+          path: /api/users/login
+          cors: true
+  register:
+    handler: src/auth/handler.register
+    environment:
+      AUTH_TABLE_NAME: ${self:provider.environment.AUTH_TABLE}
+      AUTH_TABLE_ADD_TIMESTAMPS: TRUE
+    events:
+      - http:
+          method: post
+          path: api/users
+          cors: true
+  update:
+    handler: src/auth/handler.update
+    environment:
+      AUTH_TABLE_NAME: ${self:provider.environment.AUTH_TABLE}
+      AUTH_TABLE_ADD_TIMESTAMPS: TRUE
+    events:
+      - http:
+          method: put
+          path: api/user
+          cors: true
+
+resources:
+  Resources:
+    AuthTable:
+      Type: AWS::DynamoDB::Table
+      # NOTE: If you are testing and have deletion policy on during a serverless remove, you must manually delete the table before re-deploying.
+      # DeletionPolicy: Retain # Keeps around the DynamoDB resource when we redeploy/destroy
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: email
+            AttributeType: S
+          - AttributeName: createTime
+            AttributeType: N
+        KeySchema:
+          - AttributeName: email
+            KeyType: HASH
+          - AttributeName: createTime
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.AUTH_TABLE}
